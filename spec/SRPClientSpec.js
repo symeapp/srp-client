@@ -78,7 +78,9 @@ describe("SRPClient", function() {
     
   });
   
-  var M = srp.calculateM(username, salt, A, B, Sc);
+  var K = calcSHA1Hex(Sc.toString(16));
+  
+  var M = srp.calculateM(username, salt, A, B, K);
 
   it("should be able to calculate M", function () {
     

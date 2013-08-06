@@ -18,16 +18,18 @@ SRPClient = function (username, password, group) {
   var initVal = this.initVals[group];
   
   // Set N and g from initialization values.
-  this.N = this.parseBigInt(initVal.N, 16);
-  this.g = this.parseBigInt(initVal.g, 16);
-  this.gBn = this.parseBigInt(initVal.gBn, 16);
+  this.N = new BigInteger(initVal.N, 16);
+  this.g = new BigInteger(initVal.g, 16);
+  this.gBn = new BigInteger(initVal.gBn, 16);
   
   // Pre-compute k from N and g.
   this.k = this.calculateK();
   
+  
   // Convenience big integer objects for 1 and 2.
-  this.one = this.parseBigInt("1", 16);
-  this.two = this.parseBigInt("2", 16);
+  this.one = new BigInteger("1", 16);
+  this.two = new BigInteger("2", 16);
+
   
 };
 
@@ -43,17 +45,14 @@ SRPClient.prototype = {
    */
   calculateK: function() {
     
-    // Calculate the hexadecimal values of N and g.
-    var nHex = String(this.bigIntToRadix(this.N, 16));
-    var gHex = String(this.bigIntToRadix(this.g, 16));
+    // Convert to hex values.
+    var toHash = [
+      this.N.toString(16),
+      this.g.toString(16)
+    ];
     
-    // Pad the hexadecimal values before hashing with SHA1.
-    var hashin = (nHex.length & 1) == 0 ? nHex : "0" + nHex;
-    hashin += (this.nZeros(nHex.length - gHex.length) + gHex);
-
-    // Calculate a temporary value of K, perform checks and return.
-    var ktmp = this.parseBigInt(calcSHA1Hex(hashin), 16);
-    return (ktmp.compareTo(this.N) < 0) ? ktmp : ktmp.mod(this.N);
+    // Return hash as a BigInteger.
+    return this.paddedHash(toHash);
 
   },
   
@@ -62,20 +61,18 @@ SRPClient.prototype = {
    */
   calculateX: function (saltHex) {
     
-    // Get a BigInteger object from the salt hex.
-    var salt = new BigInteger(saltHex, 16);
+    // Hash the concatenated username and password.
+    var usernamePassword = this.username + ":" + this.password;
+    var usernamePasswordHash = calcSHA1(usernamePassword);
     
-    // Get the concatenation of username and password.
-    var up = this.username + ":" + this.password
+    // Calculate the padding for the salt.
+    var spad = (saltHex.length % 2 != 0) ? '0' : '';
     
     // Calculate the hash of salt + hash(username:password).
-    var hash = calcSHA1Hex(saltHex + calcSHA1(up));
+    var X = calcSHA1Hex(spad + saltHex + usernamePasswordHash);
     
-    // Calculate the temporary value of x, check and return.
-    var xtmp = this.parseBigInt(hash, 16);
-    
-    return (xtmp.compareTo(this.N) < 0) ? xtmp :
-      xtmp.mod(this.N.subtract(this.one));
+    // Return X as a BigInteger.
+    return new BigInteger(X, 16);
     
   },
   
@@ -104,22 +101,17 @@ SRPClient.prototype = {
     
     // Verify presence of parameters.
     if (!A || !B) throw 'Missing parameter(s).';
-      
-    // Get the hex value of A and B.
-    var aHex = String(this.bigIntToRadix(A, 16));
-    var bHex = String(this.bigIntToRadix(B, 16));
     
-    // Calculate the padding for the hex values.
-    var nlen = 2 * ((this.N.bitLength() + 7) >> 3);
-    var hashin = this.nZeros(nlen - aHex.length) + aHex;
-    hashin += this.nZeros(nlen - bHex.length) + bHex;
+    // Verify value of A and B.
+    if (A.mod(this.N).toString() == '0' ||
+        B.mod(this.N).toString() == '0')
+      throw 'Illegal parameter(s).';
     
-    // Calculate a temporary value for u.
-    var uTmp = this.parseBigInt(calcSHA1Hex(hashin), 16);
+    // Convert A and B to hexadecimal.
+    var toHash = [A.toString(16), B.toString(16)];
     
-    // Perform checks and return the final value.
-    return (uTmp.compareTo(this.N) < 0) ? uTmp : 
-            uTmp.mod(this.N.subtract(one));
+    // Return hash as a BigInteger.
+    return this.paddedHash(toHash);
 
   },
   
@@ -129,44 +121,29 @@ SRPClient.prototype = {
    */
   calculateA: function(a) {
     
-    // Verify presence of parameter.
-    if (!a) throw 'Missing parameter.'
-    
+    // Return A as a BigInteger.
     return this.g.modPow(a, this.N);
     
   },
   
-  calculateM: function (username, salt, A, B, Sc) {
+  /*
+   * Calculate match M = H(H(N) xor H(g), H(I), s, A, B, K)
+   */
+  calculateM: function (username, salt, A, B, K) {
     
-    // Verify presence of parameters.
-    if (!username || !salt || !A || !B || !Sc)
-      throw 'Missing parameter(s).'
-      
-    var K = calcSHA1Hex(Sc.toString(16));
+    var aHex = A.toString(16);
+    var bHex = B.toString(16);
+    
     var hn = calcSHA1Hex(this.N.toString(16));
     var hnBn = new BigInteger(hn, 16);
+    
     var hxor = hnBn.xor(this.gBn).toString(16);
     
     var hi = calcSHA1(username);
     
-    return this.paddedHash([hxor, hi, salt,
-      A.toString(16), B.toString(16), K]);
-    
-  },
-  
-  paddedHash: function (params) {
-    
-    var nlen = 2 * ((this.N.toString(16).length * 4 + 7) >> 3);
-    
-    var hashin = '';
-    
-    for (var i = 0; i < params.length; i++) {
-      hashin += this.nZeros(nlen - params[i].length) + params[i];
-    }
-    
-    var result = new BigInteger(calcSHA1Hex(hashin), 16);
-    
-    return result.mod(this.N);
+    var array = [hxor, hi, salt, aHex, bHex, K];
+
+    return this.paddedHash(array, true);
     
   },
   
@@ -175,14 +152,6 @@ SRPClient.prototype = {
    * S = (B - (k * g^x)) ^ (a + (u * x)) % N
    */
   calculateS: function(B, salt, uu, aa) {
-    
-    // Verify presence of parameters.
-    if (!B || !salt || !uu || !aa)
-      throw 'Missing parameter(s).'
-    
-    // Verify value of B.
-    if (B.mod(this.N).toString() == '0')
-      throw 'Illegal parameter.';
     
     // Calculate X from the salt.
     var x = this.calculateX(salt);
@@ -248,19 +217,30 @@ SRPClient.prototype = {
     
   },
   
-  /* Parse a big integer with a radix. */
-  parseBigInt: function(str, r) {
-    
-    if(r == 64) 
-      return this.parseBigInt(b64tob8(str), 8);
-    
-    if(str.length == 0)
-      str = "0";
-    
-    return new BigInteger(str, r);
-  
+  /*
+   * Helper functions for hasing/padding.
+   */
+
+  /*
+  * SHA1 hashing function with padding: input 
+  * is prefixed with 0 to meet N hex width.
+  */
+  paddedHash: function (array, print) {
+
+   var nlen = 2 * ((this.N.toString(16).length * 4 + 7) >> 3);
+
+   var toHash = '';
+   
+   for (var i = 0; i < array.length; i++) {
+     toHash += this.nZeros(nlen - array[i].length) + array[i];
+   }
+   
+   var hash = new BigInteger(calcSHA1Hex(toHash), 16);
+   
+   return hash.mod(this.N);
+
   },
-  
+
   /* Return a string with N zeros. */
   nZeros: function(n) {
     
@@ -434,7 +414,7 @@ SRPClient.prototype = {
    * be used on the client except for debugging.
    */
   
-  /* Calculate the server's public value. */
+  /* Calculate the server's public value B. */
   calculateB: function(b, v) {
     
     // Verify presence of parameters.
@@ -454,13 +434,13 @@ SRPClient.prototype = {
     if (!A || !v || !u || !B)
       throw 'Missing parameters.';
     
-    // Verify value of A.
-    if (A.mod(this.N).toString() == '0')
-      throw 'Illegal parameter.';
+    // Verify value of A and B.
+    if (A.mod(this.N).toString() == '0' ||
+        B.mod(this.N).toString() == '0')
+      throw 'Illegal parameter(s).';
     
-    return v.modPow(u, this.N)
-            .multiply(A).mod(this.N)
-            .modPow(B, this.N);
+    return v.modPow(u, this.N).multiply(A)
+           .mod(this.N).modPow(B, this.N);
   }
   
 };

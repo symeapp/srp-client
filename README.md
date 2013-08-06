@@ -2,11 +2,6 @@
 
 _**Warning**: this is an alpha release and is not ready for production use. Peer review is appreciated._
 
-_**Known Vulnerabilities**_
-
-- The default PRNG included with this distribution does not rely on sufficiently random sources of entropy (see issue #1).
-- Proper parameter validation is not implemented (see issue #2).
-
 This library implements a Javascript client for the SRP protocol. The client aims to be compatible with SRP revision 6A, as defined in [RFC 5054](http://tools.ietf.org/html/rfc5054) ("Using the Secure Remote Password (SRP) Protocol for TLS Authentication"). It is released under the MPL.
 
 The code is directly based on Tom Wu's [Javascript SRP demo](http://srp.stanford.edu/demo/demo.html), which is released under the [SRP license](http://srp.stanford.edu/license.txt).

@@ -61,7 +61,7 @@ As shown in the examples below, this library accepts 1024, 1536, 2048, 4096, 614
 
   <script type="text/javascript" src="jsbn.js"></script>
   <script type="text/javascript" src="sha1.js"></script>
-  <script type="text/javascript" src="random.js"></script>
+  <script type="text/javascript" src="sjcl.js"></script>
   <script type="text/javascript" src="srp-client.js"></script>
 
   <script type="text/javascript">

@@ -61,6 +61,9 @@ SRPClient.prototype = {
    */
   calculateX: function (saltHex) {
     
+    // Verify presence of parameters.
+    if (!saltHex) throw 'Missing parameter.'
+    
     // Hash the concatenated username and password.
     var usernamePassword = this.username + ":" + this.password;
     var usernamePasswordHash = calcSHA1(usernamePassword);
@@ -121,6 +124,9 @@ SRPClient.prototype = {
    */
   calculateA: function(a) {
     
+    // Verify presence of parameter.
+    if (!a) throw 'Missing parameter.';
+    
     // Return A as a BigInteger.
     return this.g.modPow(a, this.N);
     
@@ -130,6 +136,15 @@ SRPClient.prototype = {
    * Calculate match M = H(H(N) xor H(g), H(I), s, A, B, K)
    */
   calculateM: function (username, salt, A, B, K) {
+    
+    // Verify presence of parameters.
+    if (!username || !salt || !A || !B || !K)
+      throw 'Missing parameter(s).';
+    
+    // Verify value of A and B.
+    if (A.mod(this.N).toString() == '0' ||
+        B.mod(this.N).toString() == '0')
+      throw 'Illegal parameter(s).';
     
     var aHex = A.toString(16);
     var bHex = B.toString(16);
@@ -153,6 +168,14 @@ SRPClient.prototype = {
    */
   calculateS: function(B, salt, uu, aa) {
     
+    // Verify presence of parameters.
+    if (!B || !salt || !uu || !aa)
+      throw 'Missing parameters.';
+    
+    // Verify value of B.
+    if (B.mod(this.N).toString() == '0')
+      throw 'Illegal parameter.';
+      
     // Calculate X from the salt.
     var x = this.calculateX(salt);
     
@@ -202,18 +225,10 @@ SRPClient.prototype = {
     var hex = sjcl.codec.hex.fromBits(words);
     
     // Verify length of hexadecimal salt.
-    if (hex.length != 32) throw 'Invalid salt length.'
+    if (hex.length != 32)
+      throw 'Invalid salt length.'
       
     return hex;
-    
-  },
-  
-  /* Convert a big integer to a radix. */
-  bigIntToRadix: function (bi, r) {
-    
-    var biStr = String(bi.toString(8));
-    
-    return (r == 64) ? b8tob64(biStr) : bi.toString(r);
     
   },
   

@@ -1,6 +1,6 @@
 ### Javascript Client for the Secure Remote Protocol (SRP)
 
-_**Warning**: this is an alpha release and is not ready for production use. Peer review is appreciated.
+_**Warning**: this is an alpha release and is not ready for production use. Peer review is appreciated._
 
 _**Known Vulnerabilities**_
 

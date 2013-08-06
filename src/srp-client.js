@@ -5,6 +5,10 @@
  */
 SRPClient = function (username, password, group) {
   
+  // Verify presence of username and password.
+  if (!username || !password)
+    throw 'Username or password cannot be empty.'
+    
   // Store username/password.
   this.username = username;
   this.password = password;
@@ -80,6 +84,9 @@ SRPClient.prototype = {
    */
   calculateV: function(salt) {
     
+    // Verify presence of parameters.
+    if (!salt) throw 'Missing parameter.';
+    
     // Get X from the salt value.
     var x = this.calculateX(salt);
     
@@ -95,6 +102,9 @@ SRPClient.prototype = {
    */
   calculateU: function(A, B) {
     
+    // Verify presence of parameters.
+    if (!A || !B) throw 'Missing parameter(s).';
+      
     // Get the hex value of A and B.
     var aHex = String(this.bigIntToRadix(A, 16));
     var bHex = String(this.bigIntToRadix(B, 16));
@@ -118,11 +128,20 @@ SRPClient.prototype = {
    * where a is a random number at least 256 bits in length.
    */
   calculateA: function(a) {
+    
+    // Verify presence of parameter.
+    if (!a) throw 'Missing parameter.'
+    
     return this.g.modPow(a, this.N);
+    
   },
   
   calculateM: function (username, salt, A, B, Sc) {
     
+    // Verify presence of parameters.
+    if (!username || !salt || !A || !B || !Sc)
+      throw 'Missing parameter(s).'
+      
     var K = calcSHA1Hex(Sc.toString(16));
     var hn = calcSHA1Hex(this.N.toString(16));
     var hnBn = new BigInteger(hn, 16);
@@ -132,6 +151,7 @@ SRPClient.prototype = {
     
     return this.paddedHash([hxor, hi, salt,
       A.toString(16), B.toString(16), K]);
+    
   },
   
   paddedHash: function (params) {
@@ -156,6 +176,14 @@ SRPClient.prototype = {
    */
   calculateS: function(B, salt, uu, aa) {
     
+    // Verify presence of parameters.
+    if (!B || !salt || !uu || !aa)
+      throw 'Missing parameter(s).'
+    
+    // Verify value of B.
+    if (B.mod(this.N).toString() == '0')
+      throw 'Illegal parameter.';
+    
     // Calculate X from the salt.
     var x = this.calculateX(salt);
     
@@ -179,7 +207,14 @@ SRPClient.prototype = {
   /* Generate a random big integer */
   srpRandom: function() {
 
-    var r = this.randomBigInt(32);
+    var words = sjcl.random.randomWords(8,0);
+    var hex = sjcl.codec.hex.fromBits(words);
+    
+    // Verify random number large enough.
+    if (hex.length != 64)
+      throw 'Invalid random number size.'
+
+    var r = new BigInteger(hex);
     
     if (r.compareTo(this.N) >= 0)
       r = a.mod(this.N.subtract(this.one));
@@ -191,18 +226,16 @@ SRPClient.prototype = {
 
   },
   
-  /* Generate a random big integer. */
-  randomBigInt: function(bytes) {
-    
-    var rng = new SecureRandom();
-    return new BigInteger(8 * bytes, rng);
-    
-  },
-  
   /* Return a random hexadecimal salt */
   randomHexSalt: function() {
+
+    var words = sjcl.random.randomWords(4,0);
+    var hex = sjcl.codec.hex.fromBits(words);
     
-    return this.randomBigInt(16).toString(16);
+    // Verify length of hexadecimal salt.
+    if (hex.length != 32) throw 'Invalid salt length.'
+      
+    return hex;
     
   },
   
@@ -403,16 +436,31 @@ SRPClient.prototype = {
   
   /* Calculate the server's public value. */
   calculateB: function(b, v) {
+    
+    // Verify presence of parameters.
+    if (!b || !v) throw 'Missing parameters.';
+    
     var bb = this.g.modPow(b, this.N);
     var B = bb.add(v.multiply(this.k)).mod(this.N);
+    
     return B;
+    
   },
 
   /* Calculate the server's premaster secret */
-  calculateServerS: function(AA, vv, uu, bb) {
-    return vv.modPow(uu, this.N)
-      .multiply(AA).mod(this.N)
-      .modPow(bb, this.N);
+  calculateServerS: function(A, v, u, B) {
+    
+    // Verify presence of parameters.
+    if (!A || !v || !u || !B)
+      throw 'Missing parameters.';
+    
+    // Verify value of A.
+    if (A.mod(this.N).toString() == '0')
+      throw 'Illegal parameter.';
+    
+    return v.modPow(u, this.N)
+            .multiply(A).mod(this.N)
+            .modPow(B, this.N);
   }
   
 };

@@ -5,9 +5,9 @@
  */
 SRPClient = function (username, password, group) {
   
-  // Verify presence of username and password.
-  if (!username || !password)
-    throw 'Username or password cannot be empty.'
+  // Verify presence of username.
+  if (!username)
+    throw 'Username cannot be empty.'
     
   // Store username/password.
   this.username = username;
@@ -23,8 +23,7 @@ SRPClient = function (username, password, group) {
   this.gBn = new BigInteger(initVal.gBn, 16);
   
   // Pre-compute k from N and g.
-  this.k = this.calculateK();
-  
+  this.k = this.k();
   
   // Convenience big integer objects for 1 and 2.
   this.one = new BigInteger("1", 16);
@@ -43,7 +42,7 @@ SRPClient.prototype = {
    * Calculate k = H(N || g), which is used
    * throughout various SRP calculations.
    */
-  calculateK: function() {
+  k: function() {
     
     // Convert to hex values.
     var toHash = [
@@ -63,6 +62,9 @@ SRPClient.prototype = {
     
     // Verify presence of parameters.
     if (!saltHex) throw 'Missing parameter.'
+    
+    if (!this.username || !this.password)
+      throw 'Username and password cannot be empty.';
     
     // Hash the concatenated username and password.
     var usernamePassword = this.username + ":" + this.password;
@@ -126,6 +128,9 @@ SRPClient.prototype = {
     
     // Verify presence of parameter.
     if (!a) throw 'Missing parameter.';
+    
+    if (Math.ceil(a.bitLength() / 8) < 256/8)
+      throw 'Client key length is less than 256 bits.'
     
     // Return A as a BigInteger.
     return this.g.modPow(a, this.N);
@@ -191,6 +196,10 @@ SRPClient.prototype = {
   
   },
   
+  calculateK: function (S) {
+    return calcSHA1Hex(S.toString(16));
+  },
+  
   /*
    * Helper functions for random number
    * generation and format conversion.
@@ -206,7 +215,7 @@ SRPClient.prototype = {
     if (hex.length != 64)
       throw 'Invalid random number size.'
 
-    var r = new BigInteger(hex);
+    var r = new BigInteger(hex, 16);
     
     if (r.compareTo(this.N) >= 0)
       r = a.mod(this.N.subtract(this.one));

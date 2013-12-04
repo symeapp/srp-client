@@ -10,7 +10,7 @@ describe("SRPClient", function() {
   
   var salt = 'BEB25379D1A8581EB5A727673A2441EE';
 
-  var srp = new SRPClient(username, password, 1024);
+  var srp = new SRPClient(username, password, 1024, 'sha-1');
 
   it("should be able to calculate k", function() {
 
@@ -78,14 +78,14 @@ describe("SRPClient", function() {
     
   });
   
-  var K = calcSHA1Hex(Sc.toString(16));
+  var K = srp.calculateK(Sc);
   
-  var M = srp.calculateM(username, salt, A, B, K);
+  var M = srp.calculateM(A, B, K);
 
   it("should be able to calculate M", function () {
     
     expect(M.toString(16).toUpperCase())
-      .toEqual("2814BDA0AD9B3C1382AEF9C47AFA21FA11229860");
+      .toEqual('E5F39493B07B8B88E2A4F44BC9282874CD2DEBED');
     
   });
 
@@ -95,6 +95,12 @@ describe("SRPClient", function() {
 
     expect(Ss.toString(16).toUpperCase())
     .toEqual('B0DC82BABCF30674AE450C0287745E7990A3381F63B387AAF271A10D233861E359B48220F7C4693C9AE12B0A6F67809F0876E2D013800D6C41BB59B6D5979B5C00A172B4A2A5903A0BDCAF8A709585EB2AFAFA8F3499B200210DCC1F10EB33943CD67FC88A2F39A4BE5BEC4EC0A3212DC346D7E474B29EDE8A469FFECA686E5A');
+    
+  });
+  
+  it ("should match the server's premaster secret", function () {
+    
+    expect(Ss.toString(16)).toEqual(Sc.toString(16));
     
   });
 

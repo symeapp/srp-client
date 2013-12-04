@@ -163,7 +163,7 @@ SRPClient.prototype = {
     
     var array = [aHex, bHex, K];
 
-    return this.paddedHash(array, true);
+    return this.paddedHash(array);
     
   },
   
@@ -249,9 +249,8 @@ SRPClient.prototype = {
   * SHA1 hashing function with padding: input 
   * is prefixed with 0 to meet N hex width.
   */
-  paddedHash: function (array, print) {
+  paddedHash: function (array) {
 
-   if (print) console.log(array);
    var nlen = 2 * ((this.N.toString(16).length * 4 + 7) >> 3);
 
    var toHash = '';

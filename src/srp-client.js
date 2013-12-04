@@ -296,12 +296,20 @@ SRPClient.prototype = {
    * Hex to string conversion.
    */
   pack: function(hex) {
-  	i = 0; ascii = "";
-  	while (i < hex.length/2) {
-  		ascii = ascii+String.fromCharCode(parseInt(hex.substr(i*2,2),16));
-  		i++;
-  	}
-  	return ascii;
+    
+    // To prevent null byte termination bug
+    if (hex.length % 2 != 0) hex += '0';
+    
+    i = 0; ascii = '';
+
+    while (i < hex.length/2) {
+      ascii = ascii+String.fromCharCode(
+      parseInt(hex.substr(i*2,2),16));
+      i++;
+    }
+
+    return ascii;
+
   },
   
   /* Return a string with N zeros. */

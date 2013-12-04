@@ -269,7 +269,7 @@ SRPClient.prototype = {
    * Generic hashing function.
    */
   hash: function (str) {
-    
+
     switch (this.hashFn.toLowerCase()) {
       
       case 'sha-256':
@@ -283,8 +283,6 @@ SRPClient.prototype = {
         return calcSHA1(str);
       
     }
-    
-    return calcSHA1(str);
   },
   
   /*

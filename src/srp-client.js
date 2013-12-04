@@ -3,7 +3,7 @@
  * password, and the bits identifying the 
  * group (1024 [default], 1536 or 2048 bits).
  */
-SRPClient = function (username, password, group) {
+SRPClient = function (username, password, group, hashFn) {
   
   // Verify presence of username.
   if (!username)
@@ -13,6 +13,9 @@ SRPClient = function (username, password, group) {
   this.username = username;
   this.password = password;
   
+  // Initialize hash function
+  this.hashFn = hashFn || 'sha-1';
+  
   // Retrieve initialization values.
   var group = group || 1024;
   var initVal = this.initVals[group];
@@ -20,7 +23,7 @@ SRPClient = function (username, password, group) {
   // Set N and g from initialization values.
   this.N = new BigInteger(initVal.N, 16);
   this.g = new BigInteger(initVal.g, 16);
-  this.gBn = new BigInteger(initVal.gBn, 16);
+  this.gBn = new BigInteger(initVal.g, 16);
   
   // Pre-compute k from N and g.
   this.k = this.k();
@@ -28,7 +31,6 @@ SRPClient = function (username, password, group) {
   // Convenience big integer objects for 1 and 2.
   this.one = new BigInteger("1", 16);
   this.two = new BigInteger("2", 16);
-
   
 };
 
@@ -68,13 +70,13 @@ SRPClient.prototype = {
     
     // Hash the concatenated username and password.
     var usernamePassword = this.username + ":" + this.password;
-    var usernamePasswordHash = calcSHA1(usernamePassword);
+    var usernamePasswordHash = this.hash(usernamePassword);
     
     // Calculate the padding for the salt.
     var spad = (saltHex.length % 2 != 0) ? '0' : '';
     
     // Calculate the hash of salt + hash(username:password).
-    var X = calcSHA1Hex(spad + saltHex + usernamePasswordHash);
+    var X = this.hexHash(spad + saltHex + usernamePasswordHash);
     
     // Return X as a BigInteger.
     return new BigInteger(X, 16);
@@ -110,7 +112,7 @@ SRPClient.prototype = {
     // Verify value of A and B.
     if (A.mod(this.N).toString() == '0' ||
         B.mod(this.N).toString() == '0')
-      throw 'Illegal parameter(s).';
+      throw 'ABORT: illegal_parameter';
     
     // Convert A and B to hexadecimal.
     var toHash = [A.toString(16), B.toString(16)];
@@ -121,7 +123,7 @@ SRPClient.prototype = {
   },
   
   /*
-   * Calculate the client's public value A = g^a % N,
+   * 2.5.4 Calculate the client's public value A = g^a % N,
    * where a is a random number at least 256 bits in length.
    */
   calculateA: function(a) {
@@ -133,35 +135,33 @@ SRPClient.prototype = {
       throw 'Client key length is less than 256 bits.'
     
     // Return A as a BigInteger.
-    return this.g.modPow(a, this.N);
+    var A = this.g.modPow(a, this.N);
+    
+    if (A.mod(this.N).toString() == '0')
+      throw 'ABORT: illegal_parameter';
+    
+    return A;
     
   },
   
   /*
-   * Calculate match M = H(H(N) xor H(g), H(I), s, A, B, K)
+   * Calculate match M = H(A, B, K) or M = H(A, M, K)
    */
-  calculateM: function (username, salt, A, B, K) {
+  calculateM: function (A, B_or_M, K) {
     
     // Verify presence of parameters.
-    if (!username || !salt || !A || !B || !K)
+    if (!A || !B_or_M || !K)
       throw 'Missing parameter(s).';
     
     // Verify value of A and B.
     if (A.mod(this.N).toString() == '0' ||
-        B.mod(this.N).toString() == '0')
-      throw 'Illegal parameter(s).';
+        B_or_M.mod(this.N).toString() == '0')
+      throw 'ABORT: illegal_parameter';
     
     var aHex = A.toString(16);
-    var bHex = B.toString(16);
+    var bHex = B_or_M.toString(16);
     
-    var hn = calcSHA1Hex(this.N.toString(16));
-    var hnBn = new BigInteger(hn, 16);
-    
-    var hxor = hnBn.xor(this.gBn).toString(16);
-    
-    var hi = calcSHA1(username);
-    
-    var array = [hxor, hi, salt, aHex, bHex, K];
+    var array = [aHex, bHex, K];
 
     return this.paddedHash(array, true);
     
@@ -179,7 +179,7 @@ SRPClient.prototype = {
     
     // Verify value of B.
     if (B.mod(this.N).toString() == '0')
-      throw 'Illegal parameter.';
+      throw 'ABORT: illegal_parameter';
       
     // Calculate X from the salt.
     var x = this.calculateX(salt);
@@ -197,7 +197,7 @@ SRPClient.prototype = {
   },
   
   calculateK: function (S) {
-    return calcSHA1Hex(S.toString(16));
+    return this.hexHash(S.toString(16));
   },
   
   /*
@@ -251,6 +251,7 @@ SRPClient.prototype = {
   */
   paddedHash: function (array, print) {
 
+   if (print) console.log(array);
    var nlen = 2 * ((this.N.toString(16).length * 4 + 7) >> 3);
 
    var toHash = '';
@@ -259,12 +260,53 @@ SRPClient.prototype = {
      toHash += this.nZeros(nlen - array[i].length) + array[i];
    }
    
-   var hash = new BigInteger(calcSHA1Hex(toHash), 16);
+   var hash = new BigInteger(this.hexHash(toHash), 16);
    
    return hash.mod(this.N);
 
   },
 
+  /* 
+   * Generic hashing function.
+   */
+  hash: function (str) {
+    
+    switch (this.hashFn.toLowerCase()) {
+      
+      case 'sha-256':
+        return sjcl.codec.hex.fromBits(
+               sjcl.hash.sha256.hash(str));
+      
+      case 'sha-1':
+        return calcSHA1(str);
+      
+      default:
+        return calcSHA1(str);
+      
+    }
+    
+    return calcSHA1(str);
+  },
+  
+  /*
+   * Hexadecimal hashing function.
+   */
+  hexHash: function (str) {
+    return this.hash(this.pack(str));
+  },
+  
+  /*
+   * Hex to string conversion.
+   */
+  pack: function(hex) {
+  	i = 0; ascii = "";
+  	while (i < hex.length/2) {
+  		ascii = ascii+String.fromCharCode(parseInt(hex.substr(i*2,2),16));
+  		i++;
+  	}
+  	return ascii;
+  },
+  
   /* Return a string with N zeros. */
   nZeros: function(n) {
     
@@ -289,7 +331,7 @@ SRPClient.prototype = {
          '8E495C1D6089DAD15DC7D7B46154D6B6CE8EF4AD69B15D4982559B29' +
          '7BCF1885C529F566660E57EC68EDBC3C05726CC02FD4CBF4976EAA9A' +
          'FD5138FE8376435B9FC61D2FC0EB06E3',
-      g: '2', gBn: 'b858cb282617fb0956d960215c8e84d1ccf909c6'
+      g: '2'
 
     },
     
@@ -301,11 +343,11 @@ SRPClient.prototype = {
          '6EDF019539349627DB2FD53D24B7C48665772E437D6C7F8CE442734A' +
          'F7CCB7AE837C264AE3A9BEB87F8A2FE9B8B5292E5A021FFF5E91479E' +
          '8CE7A28C2442C6F315180F93499A234DCF76E3FED135F9BB',
-      g: '2', gBn: 'b858cb282617fb0956d960215c8e84d1ccf909c6'
+      g: '2'
     },
     
     2048: {
-      N: 'AC6BDB41324A9A9BF166DE5E1389582FAF72B6651987EE07FC319294' +
+      N: 'AC6BDB41324A9A9BF166DE5E1389582FAF72B6651987EE07FC319294' +              
          '3DB56050A37329CBB4A099ED8193E0757767A13DD52312AB4B03310D' +
          'CD7F48A9DA04FD50E8083969EDB767B0CF6095179A163AB3661A05FB' +
          'D5FAAAE82918A9962F0B93B855F97993EC975EEAA80D740ADBF4FF74' +
@@ -313,8 +355,9 @@ SRPClient.prototype = {
          '436C6481F1D2B9078717461A5B9D32E688F87748544523B524B0D57D' +
          '5EA77A2775D2ECFA032CFBDBF52FB3786160279004E57AE6AF874E73' +
          '03CE53299CCC041C7BC308D82A5698F3A8D0C38271AE35F8E9DBFBB6' +
-         '94B5C803D89F7',
-      g: '2', gBn: 'b858cb282617fb0956d960215c8e84d1ccf909c6'
+         '94B5C803D89F7AE435DE236D525F54759B65E372FCD68EF20FA7111F' +
+         '9E4AFF73',
+      g: '2'
     },
     
     3072: {
@@ -332,7 +375,7 @@ SRPClient.prototype = {
          '1AD2EE6BF12FFA06D98A0864D87602733EC86A64521F2B18177B200C' +
          'BBE117577A615D6C770988C0BAD946E208E24FA074E5AB3143DB5BFC' +
          'E0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF',
-      g: '5', gBn: '511993d3c99719e38a6779073019dacd7178ddb9'
+      g: '5'
     },
     
     4096: {
@@ -355,7 +398,7 @@ SRPClient.prototype = {
          '233BA186515BE7ED1F612970CEE2D7AFB81BDD762170481CD0069127' +
          'D5B05AA993B4EA988D8FDDC186FFB7DC90A6C08F4DF435C934063199' +
          'FFFFFFFFFFFFFFFF',
-      g: '5', gBn: '511993d3c99719e38a6779073019dacd7178ddb9'
+      g: '5'
     },
     
     6144: {
@@ -387,7 +430,7 @@ SRPClient.prototype = {
          'B7C5DA76F550AA3D8A1FBFF0EB19CCB1A313D55CDA56C9EC2EF29632' +
          '387FE8D76E3C0468043E8F663F4860EE12BF2D5B0B7474D6E694F91E' +
          '6DCC4024FFFFFFFFFFFFFFFF',
-      g: '5', gBn: '511993d3c99719e38a6779073019dacd7178ddb9'
+      g: '5'
     },
     
     8192: {
@@ -428,7 +471,7 @@ SRPClient.prototype = {
         '359046F4EB879F924009438B481C6CD7889A002ED5EE382BC9190DA6' +
         'FC026E479558E4475677E9AA9E3050E2765694DFC81F56E880B96E71' +
         '60C980DD98EDD3DFFFFFFFFFFFFFFFFF',
-      g: '19', gBn: '5a8ca84c7d4d9b055f05c55b1f707f223979d387'
+      g: '19'
     }
     
   },
@@ -461,7 +504,7 @@ SRPClient.prototype = {
     // Verify value of A and B.
     if (A.mod(this.N).toString() == '0' ||
         B.mod(this.N).toString() == '0')
-      throw 'Illegal parameter(s).';
+      throw 'ABORT: illegal_parameter';
     
     return v.modPow(u, this.N).multiply(A)
            .mod(this.N).modPow(B, this.N);

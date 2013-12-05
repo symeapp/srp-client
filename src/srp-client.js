@@ -298,7 +298,7 @@ SRPClient.prototype = {
   pack: function(hex) {
     
     // To prevent null byte termination bug
-    if (hex.length % 2 != 0) hex += '0';
+    if (hex.length % 2 != 0) hex = '0' + hex;
     
     i = 0; ascii = '';
 

@@ -273,12 +273,11 @@ SRPClient.prototype = {
     switch (this.hashFn.toLowerCase()) {
       
       case 'sha-256':
-        return sjcl.codec.hex.fromBits(
-               sjcl.hash.sha256.hash(str));
+        var s = sjcl.codec.hex.fromBits(
+                sjcl.hash.sha256.hash(str));
+        return this.nZeros(64 - s.length) + s;
       
       case 'sha-1':
-        return calcSHA1(str);
-      
       default:
         return calcSHA1(str);
       
@@ -289,7 +288,19 @@ SRPClient.prototype = {
    * Hexadecimal hashing function.
    */
   hexHash: function (str) {
-    return this.hash(this.pack(str));
+    switch (this.hashFn.toLowerCase()) {
+
+      case 'sha-256':
+        var s = sjcl.codec.hex.fromBits(
+                sjcl.hash.sha256.hash(
+                sjcl.codec.hex.toBits(str)));
+        return this.nZeros(64 - s.length) + s;
+
+      case 'sha-1':
+      default:
+        return this.hash(this.pack(str));
+
+    }
   },
   
   /*

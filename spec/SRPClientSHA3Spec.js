@@ -1,10 +1,11 @@
 /*
  * Verification of the correctness of the SRP
  * algorithm using the official test vectors.
+ * Using SHA3 hash algorithm
  * See http://tools.ietf.org/html/rfc5054#appendix-B
  */
 
-describe("SRPClient", function() {
+describe("SRPClientSHA3", function() {
 
   var username = 'alice', password = 'password123';
 

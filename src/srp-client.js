@@ -264,6 +264,16 @@ SRPClient.prototype = {
    return hash.mod(this.N);
 
   },
+  
+  /*
+   * Convert a BigInteger to a hex string beginning with 0x
+   * as Hash(2) != Hash('2') != Hash(0x02) != Hash(0x2) in sjcl
+   */
+  hexStr: function(bigInt) {
+	var hex = bigInt.toString(16),
+        prefix = (hex.length < 2) ? '0x0' : '0x';
+    return prefix + hex;
+  },
 
   /* 
    * Generic hashing function.
@@ -291,9 +301,7 @@ SRPClient.prototype = {
     switch (this.hashFn.toLowerCase()) {
 
       case 'sha-256':
-        var s = sjcl.codec.hex.fromBits(
-                sjcl.hash.sha256.hash(
-                sjcl.codec.hex.toBits(str)));
+        var s = this.hash(sjcl.codec.hex.toBits(str));
         return this.nZeros(64 - s.length) + s;
 
       case 'sha-1':
@@ -302,6 +310,14 @@ SRPClient.prototype = {
 
     }
   },
+  
+  /*
+   * string hashing function, translated to utf and hash. 
+   */
+  utfHash: function (str) {
+	return this.hash(sjcl.codec.utf8String.toBits(str));
+  },
+  
   
   /*
    * Hex to string conversion.

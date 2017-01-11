@@ -28,10 +28,15 @@ SRPClient = function (username, password, group, hashFn) {
   // Pre-compute k from N and g.
   this.k = this.k();
   
+  // H_I
+  this.I = this.utfHash(this.username);
+  
+  // Pre-compute N_XOR_g from N and g.
+  this.N_XOR_g = this.N_XOR_g();
+  
   // Convenience big integer objects for 1 and 2.
   this.one = new BigInteger("1", 16);
   this.two = new BigInteger("2", 16);
-  
 };
 
 /*
@@ -55,6 +60,22 @@ SRPClient.prototype = {
     // Return hash as a BigInteger.
     return this.paddedHash(toHash);
 
+  },
+  
+  /*
+   * Calcualte N_XOR_g = Hash[ N ^ g]
+   *
+   */
+  N_XOR_g: function () {
+    var binN = this.hexHash(this.hexStr(this.N)),
+	    binG = this.hexHash(this.hexStr(this.g)),
+		rtnVal = [],
+		len = binN.length,
+		i = 0;
+	for (; i < len; i++) {
+		rtnVal.push((parseInt(binG[i], 16) ^ parseInt(binN[i], 16)).toString(16));
+	}
+    return rtnVal.join('');
   },
   
   /*
@@ -131,7 +152,7 @@ SRPClient.prototype = {
     // Verify presence of parameter.
     if (!a) throw 'Missing parameter.';
     
-    if (Math.ceil(a.bitLength() / 8) < 256/8)
+    if (a.bitLength() < 249)
       throw 'Client key length is less than 256 bits.'
     
     // Return A as a BigInteger.
@@ -165,6 +186,45 @@ SRPClient.prototype = {
 
     return this.paddedHash(array);
     
+  },
+  
+  /*
+    *  The client proof is the Hash[N_XOR_g, I, salt, public A, EphB, K]
+	* salt, the salt from Server, A, BigInteger of Public A, B: public B from the Server, K: hexHash of clientKey; 
+	*/
+  concastMc: function(salt, A, B, K) {
+	// Verify presence of parameters.
+    if (!salt || !A || !B || !K)
+      throw 'Missing parameter(s).';
+    
+    // Verify value of A and B.
+    if (A.mod(this.N).toString() == '0' ||
+        B.mod(this.N).toString() == '0')
+      throw 'ABORT: illegal_parameter';
+    
+	var array = [this.N_XOR_g, this.I, salt, A.toString(16), B.toString(16), K],
+	    concastArray = array.join('');
+	
+	return this.hexHash(concastArray);
+  },
+  
+  /*
+   *Calculate the server side proof from client's side. concastMs should equal to server key Ms. 
+   *A, BigInteger of Public A, Mc: hexHash of concastMc, K: hexHash of clientKey; 
+   */
+  concastMs: function(A, Mc, K) {
+  // Verify presence of parameters.
+    if (!A || !Mc || !K)
+      throw 'Missing parameter(s).';
+    
+    // Verify value of A and B.
+    if (A.mod(this.N).toString() == '0')
+      throw 'ABORT: illegal_parameter';
+    
+	var array = [A.toString(16), Mc, K],
+	    concastArray = array.join('');
+	
+	return this.hexHash(concastArray);
   },
   
   /*
@@ -240,7 +300,7 @@ SRPClient.prototype = {
     return hex;
     
   },
-  
+   
   /*
    * Helper functions for hasing/padding.
    */
@@ -263,6 +323,16 @@ SRPClient.prototype = {
    
    return hash.mod(this.N);
 
+  },
+  
+  /*
+   * Convert a BigInteger to a hex string begining with 0x
+   * as Hash(2) != Hash('2') != Hash(0x02) != Hash(0x2) in sjcl
+   */
+  hexStr: function(bigInt) {
+	var hex = bigInt.toString(16),
+        prefix = (hex.length < 2) ? '0x0' : '0x';
+    return prefix + hex;
   },
 
   /* 
@@ -291,9 +361,7 @@ SRPClient.prototype = {
     switch (this.hashFn.toLowerCase()) {
 
       case 'sha-256':
-        var s = sjcl.codec.hex.fromBits(
-                sjcl.hash.sha256.hash(
-                sjcl.codec.hex.toBits(str)));
+        var s = this.hash(sjcl.codec.hex.toBits(str));
         return this.nZeros(64 - s.length) + s;
 
       case 'sha-1':
@@ -301,6 +369,10 @@ SRPClient.prototype = {
         return this.hash(this.pack(str));
 
     }
+  },
+  
+  utfHash: function (str) {
+	return this.hash(sjcl.codec.utf8String.toBits(str));
   },
   
   /*
